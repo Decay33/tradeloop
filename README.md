@@ -18,6 +18,7 @@ The demo includes secure session login, demo login, business profile settings, c
 - Queue: Laravel database queue
 - Scheduler: Laravel Scheduler
 - Hosting target: Cloudways
+- Node: 24
 - Messaging: simulated only, no real SMS or email delivery
 
 ## Local Setup
@@ -117,21 +118,37 @@ php artisan serve
 
 ## Cloudways Deployment
 
-Use this as a normal Laravel app on a Cloudways subdomain.
+Use this as a normal Laravel app on a Cloudways subdomain. The GitHub remote for this checkout is:
 
-1. Create or point the subdomain to the Cloudways application:
+```text
+https://github.com/Decay33/tradeloop.git
+```
+
+1. Push the `C:\tradeloop` project to GitHub:
+
+```bash
+git add .
+git commit -m "Prepare TradeLoop for Cloudways deployment"
+git push origin main
+```
+
+Do not commit `.env`, `vendor`, `node_modules`, `public/build`, local SQLite databases, cache files, or session files.
+
+2. In Cloudways, connect the application to the GitHub repository under **Deployment via Git** and deploy the `main` branch.
+
+3. Point the subdomain to the Cloudways application:
 
 ```text
 tradeloop.theaidemocracy.com
 ```
 
-2. Set the application web root to Laravel's `public` folder:
+4. Set the public web root to Laravel's `public` folder. The exact path depends on the Cloudways application folder, but it should end in:
 
 ```text
-/path/to/tradeloop/public
+public_html/public
 ```
 
-3. Set production demo environment values:
+5. On the Cloudways server, create the app `.env` file in the Laravel project root. Use Cloudways' database name, username, and password, then set these production demo values:
 
 ```env
 APP_ENV=production
@@ -148,30 +165,39 @@ QUEUE_CONNECTION=database
 DB_QUEUE_TABLE=queue_jobs
 ```
 
-4. Install and prepare the app:
+Leave `APP_PATH` and `ASSET_URL` blank. This deployment is for `https://tradeloop.theaidemocracy.com`, not a `/tradeloop` subdirectory.
+
+6. First deploy only, generate the Laravel app key if `APP_KEY` is blank:
 
 ```bash
-composer install --no-dev --optimize-autoloader
-npm install
-npm run build
-php artisan migrate --force
-php artisan demo:reset
-php artisan config:cache
-php artisan route:cache
-php artisan view:cache
+php artisan key:generate --force
 ```
 
-5. Add a Cloudways cron job:
+7. Install, build, migrate, seed demo data, and cache the app:
 
 ```bash
-* * * * * cd /path/to/tradeloop && php artisan schedule:run >> /dev/null 2>&1
+bash scripts/cloudways-deploy.sh
 ```
 
-6. If queue workers are enabled, run:
+To reset the demo data during deployment:
+
+```bash
+RESET_DEMO=true bash scripts/cloudways-deploy.sh
+```
+
+8. Add a Cloudways cron job:
+
+```bash
+* * * * * cd /home/master/applications/YOUR_APP/public_html && php artisan schedule:run >> /dev/null 2>&1
+```
+
+9. If queue workers are enabled, run:
 
 ```bash
 php artisan queue:work --tries=3
 ```
+
+If you see both `tradeloop` and `tradeloop_scaffold` folders on the server, deploy the GitHub repository into the real Laravel application folder and ignore the scaffold folder.
 
 ## Testing
 
