@@ -18,9 +18,10 @@ class HandleInertiaRequests extends Middleware
         return [
             ...parent::share($request),
             'auth' => [
-                'user' => $request->user()?->only('id', 'name', 'email'),
+                'user' => $request->user()?->only('id', 'name', 'email', 'phone'),
                 'business' => $business?->only('id', 'name', 'trade_type', 'timezone'),
                 'role' => $business && $request->user() ? $request->user()->roleForBusiness($business) : null,
+                'permissions' => $business && $request->user() ? $request->user()->permissionsForBusiness($business) : [],
             ],
             'demoMode' => config('tradeloop.demo_mode'),
             'flash' => [

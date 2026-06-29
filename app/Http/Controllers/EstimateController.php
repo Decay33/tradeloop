@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\ConvertEstimateRequest;
 use App\Http\Requests\EstimateRequest;
 use App\Models\Estimate;
 use App\Services\AuditLogger;
@@ -18,14 +19,14 @@ class EstimateController extends Controller
     public function index(): Response
     {
         $business = app(CurrentBusinessResolver::class)->resolve();
-        $status = request('status');
+        $filter = request('filter', request('status'));
         $search = request('search');
 
         return Inertia::render('Estimates/Index', [
-            'filters' => ['status' => $status, 'search' => $search],
+            'filters' => ['filter' => $filter, 'search' => $search],
             'estimates' => $business->estimates()
-                ->with('customer', 'serviceType')
-                ->when($status, fn ($query) => $query->where('status', $status))
+                ->with('customer', 'serviceType', 'job')
+                ->tap(fn ($query) => $this->applySmartFilter($query, $filter))
                 ->when($search, fn ($query) => $query->where(function ($query) use ($search) {
                     $query->where('estimate_number', 'like', "%{$search}%")
                         ->orWhereHas('customer', fn ($query) => $query->where('first_name', 'like', "%{$search}%")->orWhere('last_name', 'like', "%{$search}%")->orWhere('company_name', 'like', "%{$search}%"));
@@ -84,7 +85,8 @@ class EstimateController extends Controller
         $this->authorize('view', $estimate);
 
         return Inertia::render('Estimates/Show', [
-            'estimate' => $estimate->load('customer', 'serviceType', 'items', 'job', 'invoice'),
+            'estimate' => $estimate->load('customer', 'serviceType', 'items', 'job.invoice', 'invoice'),
+            'teamMembers' => $estimate->business->users()->wherePivot('is_active', true)->orderBy('name')->get(['users.id', 'users.name']),
         ]);
     }
 
@@ -155,12 +157,16 @@ class EstimateController extends Controller
         return back()->with('success', 'Estimate declined.');
     }
 
-    public function convert(Estimate $estimate, EstimateConversionService $conversion)
+    public function convert(ConvertEstimateRequest $request, Estimate $estimate, EstimateConversionService $conversion)
     {
         $this->authorize('update', $estimate);
-        $result = $conversion->convert($estimate);
+        $result = $conversion->convert($estimate, $request->validated());
 
-        return redirect()->route('jobs.show', $result['job'])->with('success', $result['created'] ? 'Job and invoice created.' : 'This estimate was already converted.');
+        $message = $result['created']
+            ? ($result['invoice'] ? 'Job and invoice created.' : 'Job created.')
+            : 'This estimate was already converted.';
+
+        return redirect()->route('jobs.show', $result['job'])->with('success', $message);
     }
 
     public function print(Estimate $estimate)
@@ -168,5 +174,17 @@ class EstimateController extends Controller
         $this->authorize('view', $estimate);
 
         return view('print.estimate', ['estimate' => $estimate->load('business', 'customer', 'items')]);
+    }
+
+    private function applySmartFilter($query, ?string $filter): void
+    {
+        match ($filter) {
+            'draft', 'sent', 'accepted', 'declined', 'expired' => $query->where('status', $filter),
+            'needs_follow_up' => $query->where('status', 'sent')->whereDate('sent_at', '<=', now()->subDays(7)->toDateString())->doesntHave('job'),
+            'accepted_no_job' => $query->where('status', 'accepted')->doesntHave('job'),
+            'accepted_has_job' => $query->where('status', 'accepted')->has('job'),
+            'sent_30_days' => $query->where('status', 'sent')->whereDate('sent_at', '<=', now()->subDays(30)->toDateString()),
+            default => null,
+        };
     }
 }

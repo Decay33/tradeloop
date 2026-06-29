@@ -32,6 +32,7 @@ class DemoDataService
             $owner = User::create([
                 'name' => 'Sam Smith',
                 'email' => 'demo@tradeloop.test',
+                'phone' => '(555) 201-8833',
                 'password' => Hash::make('password'),
                 'email_verified_at' => now(),
             ]);
@@ -39,6 +40,7 @@ class DemoDataService
             $staff = User::create([
                 'name' => 'Taylor Crew',
                 'email' => 'staff@tradeloop.test',
+                'phone' => '(555) 201-8844',
                 'password' => Hash::make('password'),
                 'email_verified_at' => now(),
             ]);
@@ -58,8 +60,8 @@ class DemoDataService
                 'default_invoice_terms' => 'Payment due within 14 days.',
             ]);
 
-            $business->users()->attach($owner->id, ['role' => 'owner']);
-            $business->users()->attach($staff->id, ['role' => 'staff']);
+            $business->users()->attach($owner->id, ['role' => 'owner', 'is_active' => true]);
+            $business->users()->attach($staff->id, ['role' => 'field_staff', 'is_active' => true]);
             AppSetting::create(['business_id' => $business->id, 'key' => 'is_demo', 'value' => true]);
 
             $this->defaults->seed($business);
@@ -159,16 +161,22 @@ class DemoDataService
         }
 
         $accepted = $business->estimates()->where('status', 'accepted')->with(['customer', 'serviceType', 'items'])->get();
+        $team = $business->users()->get();
+        $fieldStaff = $team->first(fn (User $user) => $user->roleForBusiness($business) === 'field_staff');
 
-        foreach ($accepted as $index => $estimate) {
+        foreach ($accepted->take(max(0, $accepted->count() - 1)) as $index => $estimate) {
             $job = Job::create([
                 'business_id' => $business->id,
                 'customer_id' => $estimate->customer_id,
                 'estimate_id' => $estimate->id,
                 'service_type_id' => $estimate->service_type_id,
+                'quoted_total_cents' => $estimate->total_cents,
+                'assigned_user_id' => $index % 2 === 0 ? $fieldStaff?->id : null,
                 'title' => $estimate->serviceType->name.' for '.$estimate->customer->display_name,
                 'status' => $index < 7 ? 'completed' : 'scheduled',
                 'scheduled_date' => now()->subDays(18 - $index)->toDateString(),
+                'started_by_user_id' => $index < 7 ? $fieldStaff?->id : null,
+                'completed_by_user_id' => $index < 7 ? $fieldStaff?->id : null,
                 'completed_at' => $index < 7 ? now()->subDays(10 - $index) : null,
                 'followups_scheduled_at' => $index < 7 ? now()->subDays(9 - $index) : null,
                 'job_address' => $estimate->customer->full_address,
@@ -197,6 +205,7 @@ class DemoDataService
                 Payment::create([
                     'business_id' => $business->id,
                     'invoice_id' => $invoice->id,
+                    'recorded_by_user_id' => $team->first()?->id,
                     'amount_cents' => $invoice->total_cents,
                     'payment_method' => ['cash', 'check', 'credit_card', 'bank_transfer'][$index % 4],
                     'payment_date' => now()->subDays(7 - $index)->toDateString(),
@@ -206,13 +215,64 @@ class DemoDataService
                 Payment::create([
                     'business_id' => $business->id,
                     'invoice_id' => $invoice->id,
+                    'recorded_by_user_id' => $team->first()?->id,
                     'amount_cents' => (int) round($invoice->total_cents / 2),
                     'payment_method' => 'check',
                     'payment_date' => now()->subDays(4)->toDateString(),
                 ]);
+                if ($index === 4) {
+                    Payment::create([
+                        'business_id' => $business->id,
+                        'invoice_id' => $invoice->id,
+                        'recorded_by_user_id' => $team->first()?->id,
+                        'amount_cents' => (int) round($invoice->total_cents / 4),
+                        'payment_method' => 'cash',
+                        'payment_date' => now()->subDays(2)->toDateString(),
+                        'notes' => 'Second split payment in demo data.',
+                    ]);
+                }
                 $this->invoiceCalculator->recalculatePayments($invoice);
             }
+
+            if ($index === 1) {
+                $invoice->sendEvents()->create([
+                    'business_id' => $business->id,
+                    'user_id' => $team->first()?->id,
+                    'recipient' => $invoice->customer->email,
+                    'subject' => 'Invoice '.$invoice->invoice_number.' from '.$business->name,
+                    'body' => 'Simulated invoice email created by demo seed data.',
+                    'status' => 'simulated_sent',
+                    'sent_at' => now()->subDays(3),
+                ]);
+                $invoice->forceFill(['sent_at' => now()->subDays(3)])->save();
+            }
         }
+
+        $directService = $services->first();
+        $directAssigned = Job::create([
+            'business_id' => $business->id,
+            'customer_id' => $customers[15]->id,
+            'service_type_id' => $directService->id,
+            'assigned_user_id' => $fieldStaff?->id,
+            'quoted_total_cents' => 42500,
+            'title' => 'Direct handyman repair',
+            'status' => 'scheduled',
+            'scheduled_date' => now()->addDays(3)->toDateString(),
+            'job_address' => $customers[15]->full_address,
+            'notes' => 'Created directly without an estimate.',
+        ]);
+
+        Job::create([
+            'business_id' => $business->id,
+            'customer_id' => $customers[16]->id,
+            'service_type_id' => $directService->id,
+            'quoted_total_cents' => 0,
+            'title' => 'Unassigned punch list visit',
+            'status' => 'scheduled',
+            'scheduled_date' => now()->addDays(6)->toDateString(),
+            'job_address' => $customers[16]->full_address,
+            'notes' => 'Unassigned direct job for demo filtering.',
+        ]);
 
         for ($i = 0; $i < 3; $i++) {
             $customer = $customers[12 + $i];
@@ -229,6 +289,18 @@ class DemoDataService
                 ['description' => 'Small repair visit', 'quantity' => 1, 'unit_price_cents' => 32500 + ($i * 7500)],
             ], 0, $business->default_tax_rate);
         }
+
+        $directInvoice = Invoice::create([
+            'business_id' => $business->id,
+            'customer_id' => $directAssigned->customer_id,
+            'job_id' => $directAssigned->id,
+            'invoice_number' => $this->numbers->invoiceNumber($business),
+            'status' => 'draft',
+            'due_date' => now()->addDays(14)->toDateString(),
+            'tax_rate' => $business->default_tax_rate,
+        ]);
+        $this->invoiceCalculator->sync($directInvoice, [['description' => $directAssigned->title, 'quantity' => 1, 'unit_price_cents' => $directAssigned->quoted_total_cents]], 0, $business->default_tax_rate);
+        $directAssigned->forceFill(['invoice_id' => $directInvoice->id])->save();
     }
 
     private function seedFollowups(Business $business): void
@@ -279,5 +351,19 @@ class DemoDataService
                 ]);
             }
         }
+
+        $customer = $business->customers()->whereNotNull('phone')->first();
+        FollowupMessage::create([
+            'business_id' => $business->id,
+            'customer_id' => $customer->id,
+            'created_by_user_id' => $business->users()->first()?->id,
+            'is_manual' => true,
+            'channel' => 'sms',
+            'purpose' => 'sales_follow_up',
+            'status' => 'scheduled',
+            'scheduled_at' => now()->addDays(2),
+            'recipient' => $customer->phone,
+            'body' => 'Hi '.$customer->first_name.', just following up to see if you want to get on the schedule.',
+        ]);
     }
 }

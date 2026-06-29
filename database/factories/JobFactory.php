@@ -19,6 +19,8 @@ class JobFactory extends Factory
             'business_id' => Business::factory(),
             'customer_id' => Customer::factory(),
             'service_type_id' => ServiceType::factory(),
+            'quoted_total_cents' => null,
+            'assigned_user_id' => null,
             'title' => fake()->sentence(4),
             'status' => 'scheduled',
             'scheduled_date' => now()->addWeek()->toDateString(),

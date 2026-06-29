@@ -7,6 +7,7 @@ use App\Models\FollowupMessage;
 use App\Models\Invoice;
 use App\Models\Payment;
 use Carbon\Carbon;
+use Carbon\CarbonPeriod;
 use Illuminate\Support\Collection;
 
 class ReportService
@@ -16,17 +17,14 @@ class ReportService
         $start ??= now()->startOfMonth();
         $end ??= now()->endOfMonth();
 
-        $payments = Payment::query()->forBusiness($business)->whereBetween('payment_date', [$start->toDateString(), $end->toDateString()]);
+        $payments = $this->paymentsInRange($business, $start, $end);
         $completedJobs = $business->jobs()->where('status', 'completed')->whereBetween('completed_at', [$start, $end]);
 
         $revenue = (int) (clone $payments)->sum('amount_cents');
         $completedCount = (clone $completedJobs)->count();
 
         return [
-            'revenue_this_month' => (int) Payment::query()
-                ->forBusiness($business)
-                ->whereBetween('payment_date', [now()->startOfMonth()->toDateString(), now()->endOfMonth()->toDateString()])
-                ->sum('amount_cents'),
+            'revenue_this_month' => (int) $this->paymentsInRange($business, now()->startOfMonth(), now()->endOfMonth())->sum('amount_cents'),
             'open_estimate_value' => (int) $business->estimates()->whereIn('status', ['draft', 'sent'])->sum('total_cents'),
             'accepted_estimate_value' => (int) $business->estimates()->where('status', 'accepted')->sum('total_cents'),
             'unpaid_invoices' => (int) $business->invoices()->where('balance_due_cents', '>', 0)->whereNotIn('status', ['paid', 'void'])->sum('balance_due_cents'),
@@ -53,10 +51,20 @@ class ReportService
 
     public function full(Business $business, ?Carbon $start = null, ?Carbon $end = null): array
     {
+        $start ??= now()->startOfMonth();
+        $end ??= now()->endOfMonth();
+
         return [
             'metrics' => $this->summary($business, $start, $end),
+            'range' => ['start' => $start->toDateString(), 'end' => $end->toDateString()],
+            'daily_snapshot' => $this->dailySnapshot($business, $start, $end),
+            'sales_pipeline' => $this->salesPipeline($business),
+            'job_activity' => $this->jobActivity($business, $start, $end),
+            'collections' => $this->collections($business, $start, $end),
+            'followup_activity' => $this->followupActivity($business, $start, $end),
+            'service_breakdown' => $this->serviceBreakdown($business, $start, $end),
             'revenue_by_month' => $this->revenueByMonth($business),
-            'revenue_by_service_type' => $this->revenueByServiceType($business),
+            'revenue_by_service_type' => $this->revenueByServiceType($business, $start, $end),
             'invoice_aging' => $this->invoiceAging($business),
             'repeat_opportunity' => $this->repeatOpportunity($business),
         ];
@@ -86,11 +94,12 @@ class ReportService
             ->all();
     }
 
-    private function revenueByServiceType(Business $business): array
+    private function revenueByServiceType(Business $business, ?Carbon $start = null, ?Carbon $end = null): array
     {
         $payments = Payment::query()
             ->forBusiness($business)
             ->with('invoice.job.serviceType', 'invoice.estimate.serviceType')
+            ->when($start && $end, fn ($query) => $query->whereDate('payment_date', '>=', $start->toDateString())->whereDate('payment_date', '<=', $end->toDateString()))
             ->get();
 
         return $payments
@@ -177,5 +186,109 @@ class ReportService
             'estimated_cents' => $estimated,
             'top' => $top,
         ];
+    }
+
+    private function dailySnapshot(Business $business, Carbon $start, Carbon $end): array
+    {
+        return collect(CarbonPeriod::create($start->copy()->startOfDay(), $end->copy()->startOfDay()))
+            ->map(function (Carbon $date) use ($business) {
+                $dayStart = $date->copy()->startOfDay();
+                $dayEnd = $date->copy()->endOfDay();
+
+                return [
+                    'date' => $date->toDateString(),
+                    'estimates_created' => $business->estimates()->whereBetween('created_at', [$dayStart, $dayEnd])->count(),
+                    'estimate_value_cents' => (int) $business->estimates()->whereBetween('created_at', [$dayStart, $dayEnd])->sum('total_cents'),
+                    'jobs_created' => $business->jobs()->whereBetween('created_at', [$dayStart, $dayEnd])->count(),
+                    'jobs_completed' => $business->jobs()->whereBetween('completed_at', [$dayStart, $dayEnd])->count(),
+                    'invoices_created' => $business->invoices()->whereBetween('created_at', [$dayStart, $dayEnd])->count(),
+                    'payments_collected_cents' => (int) Payment::query()->forBusiness($business)->whereDate('payment_date', $date->toDateString())->sum('amount_cents'),
+                    'followups_sent' => $business->followupMessages()->whereIn('status', ['sent', 'simulated_sent'])->whereBetween('sent_at', [$dayStart, $dayEnd])->count(),
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    private function salesPipeline(Business $business): array
+    {
+        $accepted = $business->estimates()->where('status', 'accepted');
+
+        return [
+            'open_estimate_value_cents' => (int) $business->estimates()->whereIn('status', ['draft', 'sent'])->sum('total_cents'),
+            'accepted_estimate_value_cents' => (int) (clone $accepted)->sum('total_cents'),
+            'estimates_needing_followup' => $business->estimates()->where('status', 'sent')->whereDate('sent_at', '<=', now()->subDays(7)->toDateString())->doesntHave('job')->count(),
+            'accepted_without_jobs' => (clone $accepted)->doesntHave('job')->count(),
+            'estimate_win_rate' => $this->winRate($business),
+        ];
+    }
+
+    private function jobActivity(Business $business, Carbon $start, Carbon $end): array
+    {
+        return [
+            'jobs_created' => $business->jobs()->whereBetween('created_at', [$start, $end])->count(),
+            'jobs_scheduled' => $business->jobs()->where('status', 'scheduled')->whereBetween('scheduled_date', [$start->toDateString(), $end->toDateString()])->count(),
+            'jobs_started' => $business->jobs()->whereBetween('started_at', [$start, $end])->count(),
+            'jobs_completed' => $business->jobs()->whereBetween('completed_at', [$start, $end])->count(),
+            'jobs_canceled' => $business->jobs()->whereBetween('canceled_at', [$start, $end])->count(),
+            'jobs_with_no_invoice' => $business->jobs()->whereNull('invoice_id')->count(),
+            'by_assigned_user' => $business->jobs()->with('assignedUser')->get()->groupBy(fn ($job) => $job->assignedUser?->name ?: 'Unassigned')->map(fn (Collection $jobs, string $name) => [
+                'name' => $name,
+                'count' => $jobs->count(),
+            ])->values()->all(),
+        ];
+    }
+
+    private function collections(Business $business, Carbon $start, Carbon $end): array
+    {
+        return [
+            'payments_collected_cents' => (int) $this->paymentsInRange($business, $start, $end)->sum('amount_cents'),
+            'unpaid_invoices_cents' => (int) $business->invoices()->where('balance_due_cents', '>', 0)->whereNotIn('status', ['paid', 'void'])->sum('balance_due_cents'),
+            'past_due_invoices_cents' => (int) $business->invoices()->where('balance_due_cents', '>', 0)->whereDate('due_date', '<', now()->toDateString())->sum('balance_due_cents'),
+            'overdue_30_cents' => (int) $business->invoices()->where('balance_due_cents', '>', 0)->whereDate('due_date', '<=', now()->subDays(30)->toDateString())->sum('balance_due_cents'),
+            'overdue_60_cents' => (int) $business->invoices()->where('balance_due_cents', '>', 0)->whereDate('due_date', '<=', now()->subDays(60)->toDateString())->sum('balance_due_cents'),
+            'invoice_aging' => $this->invoiceAging($business),
+        ];
+    }
+
+    private function followupActivity(Business $business, Carbon $start, Carbon $end): array
+    {
+        return [
+            'scheduled' => $business->followupMessages()->where('status', 'scheduled')->whereBetween('scheduled_at', [$start, $end])->count(),
+            'sent' => $business->followupMessages()->whereIn('status', ['sent', 'simulated_sent'])->whereBetween('sent_at', [$start, $end])->count(),
+            'skipped' => $business->followupMessages()->where('status', 'skipped')->whereBetween('created_at', [$start, $end])->count(),
+            'review_requests_sent' => $business->followupMessages()->where('purpose', 'review_request')->whereIn('status', ['sent', 'simulated_sent'])->whereBetween('sent_at', [$start, $end])->count(),
+            'sales_followups_due' => $business->followupMessages()->where('purpose', 'sales_follow_up')->where('status', 'scheduled')->whereBetween('scheduled_at', [$start, $end])->count(),
+            'repeat_followups_due' => $business->followupMessages()->whereIn('purpose', ['repeat_service', 'seasonal_reminder', 'warranty_check'])->where('status', 'scheduled')->whereBetween('scheduled_at', [$start, $end])->count(),
+        ];
+    }
+
+    private function serviceBreakdown(Business $business, Carbon $start, Carbon $end): array
+    {
+        $revenue = collect($this->revenueByServiceType($business, $start, $end))->keyBy('service_type');
+
+        return $business->serviceTypes()->with(['jobs' => fn ($query) => $query->whereBetween('created_at', [$start, $end])])->get()
+            ->map(function ($service) use ($business, $revenue) {
+                $invoices = $business->invoices()->whereHas('job', fn ($query) => $query->where('service_type_id', $service->id))->get();
+                $invoiceCount = $invoices->count();
+
+                return [
+                    'service_type' => $service->name,
+                    'revenue_cents' => $revenue[$service->name]['total_cents'] ?? 0,
+                    'jobs_count' => $service->jobs->count(),
+                    'average_invoice_cents' => $invoiceCount > 0 ? (int) round($invoices->sum('total_cents') / $invoiceCount) : 0,
+                    'repeat_opportunity_cents' => $service->default_price_cents * $business->followupMessages()->whereHas('job', fn ($query) => $query->where('service_type_id', $service->id))->where('status', 'scheduled')->whereIn('purpose', ['repeat_service', 'seasonal_reminder', 'warranty_check'])->count(),
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    private function paymentsInRange(Business $business, Carbon $start, Carbon $end)
+    {
+        return Payment::query()
+            ->forBusiness($business)
+            ->whereDate('payment_date', '>=', $start->toDateString())
+            ->whereDate('payment_date', '<=', $end->toDateString());
     }
 }

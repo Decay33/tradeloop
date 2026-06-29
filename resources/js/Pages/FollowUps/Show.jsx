@@ -1,4 +1,4 @@
-import { Head, router, useForm } from '@inertiajs/react';
+import { Head, Link, router, useForm } from '@inertiajs/react';
 import PageHeader from '../../Components/PageHeader';
 import StatusBadge from '../../Components/StatusBadge';
 import AppLayout from '../../Layouts/AppLayout';
@@ -24,6 +24,10 @@ export default function ShowFollowUp({ message }) {
                     {message.skip_reason ? <p className="mt-3 rounded-md bg-amber-50 p-3 text-sm text-amber-900">{message.skip_reason}</p> : null}
                     {message.subject ? <h2 className="mt-6 font-semibold">{message.subject}</h2> : null}
                     <p className="mt-3 whitespace-pre-line rounded-md bg-slate-50 p-4 text-sm">{message.body}</p>
+                    <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                        {message.estimate ? <Link className="rounded-md border p-3 text-sm font-semibold text-teal-800" href={appUrl(`estimates/${message.estimate.id}`)}>Estimate {message.estimate.estimate_number}</Link> : null}
+                        {message.job ? <Link className="rounded-md border p-3 text-sm font-semibold text-teal-800" href={appUrl(`jobs/${message.job.id}`)}>Job {message.job.title}</Link> : null}
+                    </div>
                 </section>
                 <section className="rounded-lg border border-slate-200 bg-white p-4">
                     <h2 className="font-semibold">Actions</h2>

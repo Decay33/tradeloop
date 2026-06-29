@@ -8,7 +8,7 @@ import { appUrl } from '../../lib/url';
 
 export default function ShowCustomer({ customer }) {
     const { auth } = usePage().props;
-    const canCreateEstimate = ['owner', 'manager'].includes(auth?.role);
+    const permissions = auth?.permissions || [];
 
     return (
         <AppLayout>
@@ -20,11 +20,12 @@ export default function ShowCustomer({ customer }) {
                     <p className="mt-3 text-sm text-slate-600">{customer.phone || 'No phone'}<br />{customer.email || 'No email'}<br />{customer.full_address}</p>
                     <p className="mt-3 text-sm">Date added: {localDateTime(customer.created_at)}<br />SMS consent: {customer.sms_consent ? 'Yes' : 'No'}<br />Email consent: {customer.email_consent ? 'Yes' : 'No'}</p>
                     <p className="mt-3 text-sm text-slate-600">{customer.notes}</p>
-                    {canCreateEstimate ? (
-                        <Link className="mt-4 inline-flex min-h-10 items-center justify-center rounded-md bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800" href={appUrl(`estimates/create?customer_id=${customer.id}`)}>
-                            Create Estimate
-                        </Link>
-                    ) : null}
+                    <div className="mt-4 grid gap-2">
+                        {permissions.some((permission) => ['create_estimates', 'manage_estimates'].includes(permission)) ? <Action href={`estimates/create?customer_id=${customer.id}`}>Create Estimate</Action> : null}
+                        {permissions.some((permission) => ['create_jobs', 'start_jobs', 'complete_jobs'].includes(permission)) ? <Action href={`jobs/create?customer_id=${customer.id}`}>Create Job</Action> : null}
+                        {permissions.includes('manage_invoices') ? <Action href={`invoices/create?customer_id=${customer.id}`}>Create Invoice</Action> : null}
+                        {permissions.includes('manage_followups') ? <Action href={`follow-ups/create?customer_id=${customer.id}`}>Create Follow-Up</Action> : null}
+                    </div>
                 </section>
                 <List title="Estimates" items={customer.estimates} href="estimates" number="estimate_number" />
                 <List title="Invoices" items={customer.invoices} href="invoices" number="invoice_number" moneyField="balance_due_cents" />
@@ -33,6 +34,10 @@ export default function ShowCustomer({ customer }) {
             </div>
         </AppLayout>
     );
+}
+
+function Action({ href, children }) {
+    return <Link className="inline-flex min-h-10 items-center justify-center rounded-md bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800" href={appUrl(href)}>{children}</Link>;
 }
 
 function List({ title, items, href, number, moneyField }) {

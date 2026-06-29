@@ -61,7 +61,7 @@ class CurrentBusinessResolver
         $user ??= Auth::user();
 
         return $user
-            ? $user->businesses()->whereKey($businessId)->exists()
+            ? $user->businesses()->whereKey($businessId)->wherePivot('is_active', true)->exists()
             : false;
     }
 

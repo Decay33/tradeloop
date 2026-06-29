@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Support\Money;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
 
 class InvoicePaymentService
@@ -31,6 +32,7 @@ class InvoicePaymentService
 
         $payment = $invoice->payments()->create([
             'business_id' => $invoice->business_id,
+            'recorded_by_user_id' => Auth::id(),
             'amount_cents' => $amount,
             'payment_method' => $data['payment_method'],
             'payment_date' => $data['payment_date'],

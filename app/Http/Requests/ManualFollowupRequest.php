@@ -6,7 +6,7 @@ use App\Services\CurrentBusinessResolver;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
-class InvoiceRequest extends FormRequest
+class ManualFollowupRequest extends FormRequest
 {
     public function authorize(): bool
     {
@@ -19,15 +19,13 @@ class InvoiceRequest extends FormRequest
 
         return [
             'customer_id' => ['required', Rule::exists('customers', 'id')->where('business_id', $businessId)],
+            'estimate_id' => ['nullable', Rule::exists('estimates', 'id')->where('business_id', $businessId)],
             'job_id' => ['nullable', Rule::exists('jobs', 'id')->where('business_id', $businessId)],
-            'discount' => ['nullable', 'numeric', 'min:0'],
-            'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:25'],
-            'due_date' => ['nullable', 'date'],
-            'items' => ['required', 'array', 'min:1'],
-            'items.*.description' => ['required', 'string', 'max:255'],
-            'items.*.quantity' => ['required', 'numeric', 'gt:0'],
-            'items.*.unit_price' => ['nullable', 'numeric', 'min:0'],
-            'items.*.unit_price_cents' => ['nullable', 'integer', 'min:0'],
+            'channel' => ['required', Rule::in(['sms', 'email'])],
+            'purpose' => ['required', Rule::in(['thank_you', 'review_request', 'repeat_service', 'seasonal_reminder', 'warranty_check', 'sales_follow_up'])],
+            'scheduled_at' => ['required', 'date'],
+            'subject' => ['nullable', 'string', 'max:255'],
+            'body' => ['required', 'string'],
         ];
     }
 }

@@ -69,6 +69,11 @@ class Invoice extends Model
         return $this->hasMany(Payment::class);
     }
 
+    public function sendEvents(): HasMany
+    {
+        return $this->hasMany(InvoiceSendEvent::class);
+    }
+
     public function getIsOverdueAttribute(): bool
     {
         return $this->due_date !== null

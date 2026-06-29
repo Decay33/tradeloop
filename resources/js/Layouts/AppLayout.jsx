@@ -3,19 +3,19 @@ import { BarChart3, BriefcaseBusiness, FileText, Home, LogOut, MessageSquareText
 import { appUrl } from '../lib/url';
 
 const nav = [
-    ['Dashboard', 'dashboard', Home, ['owner', 'manager', 'staff']],
-    ['Customers', 'customers', Users, ['owner', 'manager', 'staff']],
-    ['Estimates', 'estimates', FileText, ['owner', 'manager']],
-    ['Invoices', 'invoices', Receipt, ['owner', 'manager']],
-    ['Jobs', 'jobs', BriefcaseBusiness, ['owner', 'manager', 'staff']],
-    ['Follow-Ups', 'follow-ups', MessageSquareText, ['owner', 'manager', 'staff']],
-    ['Reports', 'reports', BarChart3, ['owner', 'manager']],
-    ['Settings', 'settings', Settings, ['owner', 'manager']],
+    ['Dashboard', 'dashboard', Home, ['view_dashboard']],
+    ['Customers', 'customers', Users, ['manage_customers']],
+    ['Estimates', 'estimates', FileText, ['create_estimates', 'manage_estimates']],
+    ['Invoices', 'invoices', Receipt, ['manage_invoices']],
+    ['Jobs', 'jobs', BriefcaseBusiness, ['create_jobs', 'start_jobs', 'complete_jobs']],
+    ['Follow-Ups', 'follow-ups', MessageSquareText, ['manage_followups']],
+    ['Reports', 'reports', BarChart3, ['view_reports']],
+    ['Settings', 'settings', Settings, ['manage_settings', 'manage_team']],
 ];
 
 export default function AppLayout({ children }) {
     const { auth, demoMode, flash } = usePage().props;
-    const role = auth?.role;
+    const permissions = auth?.permissions || [];
 
     function logout() {
         router.post(appUrl('logout'));
@@ -35,7 +35,7 @@ export default function AppLayout({ children }) {
                     </div>
                 </div>
                 <nav className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 pb-3">
-                    {nav.filter((item) => item[3].includes(role)).map(([label, href, Icon]) => (
+                    {nav.filter((item) => item[3].some((permission) => permissions.includes(permission))).map(([label, href, Icon]) => (
                         <Link key={href} href={appUrl(href)} className="inline-flex min-h-10 items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100">
                             <Icon size={16} /> {label}
                         </Link>

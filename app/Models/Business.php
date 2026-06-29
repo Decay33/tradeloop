@@ -41,7 +41,7 @@ class Business extends Model
 
     public function users(): BelongsToMany
     {
-        return $this->belongsToMany(User::class)->withPivot('role')->withTimestamps();
+        return $this->belongsToMany(User::class)->withPivot('role', 'permissions', 'is_active')->withTimestamps();
     }
 
     public function customers(): HasMany
@@ -62,6 +62,11 @@ class Business extends Model
     public function invoices(): HasMany
     {
         return $this->hasMany(Invoice::class);
+    }
+
+    public function invoiceSendEvents(): HasMany
+    {
+        return $this->hasMany(InvoiceSendEvent::class);
     }
 
     public function jobs(): HasMany

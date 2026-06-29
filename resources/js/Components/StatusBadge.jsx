@@ -15,6 +15,11 @@ const colors = {
     canceled: 'bg-slate-200 text-slate-600',
     simulated_sent: 'bg-emerald-100 text-emerald-700',
     skipped: 'bg-amber-100 text-amber-800',
+    due_soon: 'bg-amber-100 text-amber-800',
+    past_due: 'bg-red-100 text-red-700',
+    very_overdue: 'bg-red-100 text-red-800',
+    critical: 'bg-red-200 text-red-900',
+    sales_follow_up: 'bg-violet-100 text-violet-700',
 };
 
 export default function StatusBadge({ status }) {

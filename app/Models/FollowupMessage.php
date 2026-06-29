@@ -18,7 +18,10 @@ class FollowupMessage extends Model
         'business_id',
         'customer_id',
         'job_id',
+        'estimate_id',
         'template_id',
+        'created_by_user_id',
+        'is_manual',
         'channel',
         'purpose',
         'status',
@@ -37,6 +40,7 @@ class FollowupMessage extends Model
             'scheduled_at' => 'datetime',
             'sent_at' => 'datetime',
             'canceled_at' => 'datetime',
+            'is_manual' => 'boolean',
         ];
     }
 
@@ -50,9 +54,19 @@ class FollowupMessage extends Model
         return $this->belongsTo(Job::class);
     }
 
+    public function estimate(): BelongsTo
+    {
+        return $this->belongsTo(Estimate::class);
+    }
+
     public function template(): BelongsTo
     {
         return $this->belongsTo(FollowupTemplate::class, 'template_id');
+    }
+
+    public function createdBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by_user_id');
     }
 
     public function events(): HasMany

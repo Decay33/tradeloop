@@ -21,11 +21,15 @@ class Job extends Model
         'estimate_id',
         'invoice_id',
         'service_type_id',
+        'quoted_total_cents',
+        'assigned_user_id',
         'title',
         'status',
         'scheduled_date',
         'started_at',
+        'started_by_user_id',
         'completed_at',
+        'completed_by_user_id',
         'canceled_at',
         'followups_scheduled_at',
         'job_address',
@@ -61,6 +65,21 @@ class Job extends Model
     public function serviceType(): BelongsTo
     {
         return $this->belongsTo(ServiceType::class);
+    }
+
+    public function assignedUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assigned_user_id');
+    }
+
+    public function startedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'started_by_user_id');
+    }
+
+    public function completedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'completed_by_user_id');
     }
 
     public function followupMessages(): HasMany

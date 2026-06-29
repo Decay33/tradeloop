@@ -6,12 +6,16 @@ use App\Http\Requests\BusinessProfileRequest;
 use App\Http\Requests\FollowupRuleRequest;
 use App\Http\Requests\FollowupTemplateRequest;
 use App\Http\Requests\ServiceTypeRequest;
+use App\Http\Requests\TeamMemberRequest;
 use App\Models\FollowupRule;
 use App\Models\FollowupTemplate;
 use App\Models\ServiceType;
+use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\CurrentBusinessResolver;
 use App\Support\Money;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -164,7 +168,66 @@ class SettingsController extends Controller
         $business = app(CurrentBusinessResolver::class)->resolve();
 
         return Inertia::render('Settings/Team', [
-            'users' => $business->users()->get(),
+            'users' => $business->users()->orderBy('name')->get(),
+            'permissions' => User::allPermissions(),
         ]);
+    }
+
+    public function storeTeamMember(TeamMemberRequest $request, AuditLogger $auditLogger)
+    {
+        $business = app(CurrentBusinessResolver::class)->resolve();
+        $user = User::create([
+            'name' => $request->input('name'),
+            'email' => $request->input('email'),
+            'phone' => $request->input('phone'),
+            'password' => Hash::make($request->input('temporary_password')),
+            'email_verified_at' => now(),
+        ]);
+
+        $business->users()->attach($user->id, $this->pivotData($request));
+        $auditLogger->log('team_member_created', $business, $user);
+
+        return back()->with('success', 'Team member added.');
+    }
+
+    public function updateTeamMember(TeamMemberRequest $request, User $user, AuditLogger $auditLogger)
+    {
+        $business = app(CurrentBusinessResolver::class)->resolve();
+        abort_unless($business->users()->whereKey($user->id)->exists(), 403);
+
+        $user->update([
+            'name' => $request->input('name'),
+            'email' => $request->input('email'),
+            'phone' => $request->input('phone'),
+            ...($request->filled('temporary_password') ? ['password' => Hash::make($request->input('temporary_password'))] : []),
+        ]);
+
+        $business->users()->updateExistingPivot($user->id, $this->pivotData($request));
+        $auditLogger->log('team_member_updated', $business, $user);
+
+        return back()->with('success', 'Team member updated.');
+    }
+
+    public function deactivateTeamMember(User $user, AuditLogger $auditLogger)
+    {
+        $business = app(CurrentBusinessResolver::class)->resolve();
+        abort_unless($business->users()->whereKey($user->id)->exists(), 403);
+        abort_if($user->id === Auth::id(), 422, 'You cannot deactivate yourself.');
+
+        $business->users()->updateExistingPivot($user->id, ['is_active' => false]);
+        $auditLogger->log('team_member_deactivated', $business, $user);
+
+        return back()->with('success', 'Team member deactivated.');
+    }
+
+    private function pivotData(TeamMemberRequest $request): array
+    {
+        $role = $request->input('role');
+
+        return [
+            'role' => $role,
+            'permissions' => $role === 'custom' ? json_encode($request->input('permissions', [])) : null,
+            'is_active' => $request->boolean('is_active', true),
+        ];
     }
 }

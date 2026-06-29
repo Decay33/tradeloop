@@ -6,6 +6,7 @@ use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
 use App\Http\Middleware\EnsureCurrentBusiness;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\RequirePermission;
 use App\Http\Middleware\RequireRole;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -21,6 +22,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'current.business' => EnsureCurrentBusiness::class,
+            'permission' => RequirePermission::class,
             'role' => RequireRole::class,
         ]);
     })

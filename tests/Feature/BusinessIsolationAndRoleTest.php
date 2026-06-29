@@ -56,6 +56,41 @@ class BusinessIsolationAndRoleTest extends TestCase
         $this->assertSame(10000, $summary['revenue_this_month']);
     }
 
+    public function test_manual_followups_reject_cross_business_records(): void
+    {
+        [$userA] = $this->account('owner');
+        [, $businessB] = $this->account('owner');
+        $customerB = Customer::factory()->for($businessB)->create();
+
+        $this->actingAs($userA)->post('/follow-ups', [
+            'customer_id' => $customerB->id,
+            'channel' => 'sms',
+            'purpose' => 'sales_follow_up',
+            'scheduled_at' => now()->addDay()->format('Y-m-d\TH:i'),
+            'body' => 'Should not save.',
+        ])->assertSessionHasErrors('customer_id');
+    }
+
+    public function test_custom_permissions_are_enforced_server_side(): void
+    {
+        [$owner, $business] = $this->account('owner');
+
+        $this->actingAs($owner)->post('/settings/team', [
+            'name' => 'Invoice Only',
+            'email' => 'invoice-only@example.test',
+            'role' => 'custom',
+            'temporary_password' => 'password123',
+            'is_active' => true,
+            'permissions' => ['manage_invoices'],
+        ])->assertRedirect();
+
+        $custom = User::where('email', 'invoice-only@example.test')->first();
+
+        $this->actingAs($custom)->get('/invoices')->assertOk();
+        $this->actingAs($custom)->get('/jobs')->assertForbidden();
+        $this->actingAs($custom)->get('/reports')->assertForbidden();
+    }
+
     public function test_role_permissions_match_mvp_rules(): void
     {
         [$owner] = $this->account('owner');

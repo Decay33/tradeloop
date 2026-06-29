@@ -6,7 +6,7 @@ Product promise:
 
 > Finish the job. TradeLoop handles the follow-up.
 
-The demo includes secure session login, demo login, business profile settings, customers, service types, estimates, invoices, payments, jobs, follow-up templates/rules/messages, simulated SMS/email sending, dashboard metrics, reports, demo data reset, and tests.
+The demo includes secure session login, demo login, business profile settings, customers, service types, estimates, invoices, payments, jobs, follow-up templates/rules/messages, simulated SMS/email sending, dashboard metrics, reports, optional team members, demo data reset, and tests.
 
 ## Stack
 
@@ -48,8 +48,28 @@ Optional seeded staff user:
 ```text
 Email: staff@tradeloop.test
 Password: password
-Role: staff
+Role: field staff
 ```
+
+## v1.1 Pro Polish
+
+TradeLoop v1.1 keeps the demo simple while making the contractor workflow smoother:
+
+- Jobs can be created directly without an estimate.
+- Jobs can store an optional quoted price and assigned team member.
+- Accepted estimates open a review modal before creating a job and optional invoice.
+- Estimate, job, and invoice detail screens show linked records clearly.
+- Job detail shows invoice total, paid amount, balance due, due date, payment action, and simulated invoice email action.
+- Invoices can be standalone or linked to jobs.
+- Invoices support multiple recorded payments with method, notes, and recorded-by user.
+- Invoice email sending is simulated through `invoice_send_events`; no real email is sent.
+- Invoice print/download uses the print-friendly invoice view as the PDF/save fallback.
+- Customer detail has quick actions for estimate, job, invoice, and follow-up.
+- Manual follow-ups can be created from customers, estimates, jobs, or the follow-ups page.
+- Completing a job opens a follow-up review modal with editable dates and a complete-without-follow-ups option.
+- Estimates, invoices, jobs, and follow-ups include practical smart filters.
+- Reports include date ranges, daily snapshot, sales pipeline, job activity, collections, follow-up activity, and service breakdown sections.
+- Owners can add optional team members with roles and custom permissions.
 
 ## Environment
 
@@ -101,6 +121,8 @@ php artisan schedule:work
 ```
 
 In demo mode, `followups:process-due` changes due scheduled follow-ups to `simulated_sent`, sets `sent_at`, and records message events. It never sends real SMS or email.
+
+In demo mode, invoice email sending is also simulated. Clicking Send Invoice Email creates an `invoice_send_events` row and marks the invoice sent when the customer has an email address.
 
 ## Development
 
@@ -185,6 +207,8 @@ To reset the demo data during deployment:
 RESET_DEMO=true bash scripts/cloudways-deploy.sh
 ```
 
+After pulling v1.1 onto an existing Cloudways app, run the deployment script so the new additive migration creates team permissions, job assignment fields, manual follow-up fields, and `invoice_send_events`.
+
 8. Add a Cloudways cron job:
 
 ```bash
@@ -205,4 +229,4 @@ If you see both `tradeloop` and `tradeloop_scaffold` folders on the server, depl
 php artisan test
 ```
 
-The test suite covers authentication, demo login, business isolation, role restrictions, customers, estimates, invoice payments, job completion automation, simulated sending, and reports.
+The test suite covers authentication, demo login, business isolation, permissions, customers, estimates, estimate conversion, direct jobs, invoice payments, simulated invoice email, manual follow-ups, job completion review, smart filters, report ranges, team members, simulated sending, and reports.

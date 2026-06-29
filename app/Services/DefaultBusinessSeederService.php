@@ -95,6 +95,13 @@ class DefaultBusinessSeederService
                 'Thanks again from {{business_name}}',
                 "Hi {{customer_first_name}},\n\nThank you again for choosing {{business_name}} for your {{service_name}}.\n\nIf you were happy with the work, would you mind leaving us a quick review? It really helps small businesses like ours.\n\nGoogle review link:\n{{google_review_url}}\n\nThanks,\n{{business_name}}\n{{business_phone}}",
             ],
+            [
+                'SMS Sales Follow-Up',
+                'sms',
+                'sales_follow_up',
+                null,
+                'Hi {{customer_first_name}}, this is {{business_name}}. Just following up to see if you had questions or wanted to get on the schedule.',
+            ],
         ];
 
         return collect($templates)->mapWithKeys(function (array $row) use ($business) {

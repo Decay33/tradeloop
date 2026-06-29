@@ -8,6 +8,7 @@ use App\Models\FollowupMessage;
 use App\Models\FollowupRule;
 use App\Models\FollowupTemplate;
 use App\Models\Invoice;
+use App\Models\InvoiceSendEvent;
 use App\Models\Job;
 use App\Models\Payment;
 use App\Models\ServiceType;
@@ -41,7 +42,7 @@ class AppServiceProvider extends ServiceProvider
             }
         }
 
-        foreach ([Customer::class, ServiceType::class, Estimate::class, Invoice::class, Payment::class, Job::class, FollowupTemplate::class, FollowupRule::class, FollowupMessage::class] as $model) {
+        foreach ([Customer::class, ServiceType::class, Estimate::class, Invoice::class, InvoiceSendEvent::class, Payment::class, Job::class, FollowupTemplate::class, FollowupRule::class, FollowupMessage::class] as $model) {
             Gate::policy($model, BusinessOwnedPolicy::class);
         }
     }
