@@ -9,6 +9,9 @@ if [ ! -f ".env" ]; then
     exit 1
 fi
 
+# Remove stale config from older deployments. TradeLoop uses session auth, not Sanctum.
+rm -f config/sanctum.php
+
 composer install --no-dev --optimize-autoloader
 
 php artisan optimize:clear
